@@ -1,0 +1,6 @@
+services:
+  - type: static
+    name: tunika-erp
+    env: static
+    buildCommand: ""
+    publishPath: "."
