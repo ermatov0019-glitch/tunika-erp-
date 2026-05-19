@@ -423,11 +423,12 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="calculator-box glass" style="display:flex; align-items:center; gap:15px; padding:10px 25px">
+                            <div class="calculator-box glass" style="display:flex; align-items:center; flex-wrap:wrap; gap:15px; padding:10px 25px">
                                 <div id="selected-product-label" style="font-weight:bold; color:var(--neon-cyan); border-right:1px solid rgba(255,255,255,0.1); padding-right:15px; font-size:0.9rem">Mahsulotni tanlang</div>
                                 <span style="font-size:0.8rem; color:var(--text-secondary)">Hisob:</span>
                                 <input type="text" id="quick-calc" placeholder="6*8" style="width:80px; text-align:center; background:rgba(255,255,255,0.05); border:1px solid var(--neon-cyan); color:white; padding:8px; border-radius:8px; outline:none; font-size:1.1rem; font-weight:bold">
                                 <span id="calc-result" style="font-weight:800; color:var(--neon-cyan); font-size:1.1rem; min-width:80px">0 m</span>
+                                <button class="neon-btn" id="add-to-cart-btn" style="padding: 8px 15px; font-size: 0.9rem;">Qo'shish ↵</button>
                             </div>
                         </div>
                     </div>
@@ -885,6 +886,12 @@
 
         quickCalcInput.onkeydown = (e) => {
             if(e.key === 'Enter' && selectedProductId) {
+                addProductToCartById(selectedProductId);
+            }
+        };
+
+        document.getElementById('add-to-cart-btn').onclick = () => {
+            if(selectedProductId) {
                 addProductToCartById(selectedProductId);
             }
         };
