@@ -1,6 +1,6 @@
 services:
-  - type: static
+  - type: web
     name: tunika-erp
-    env: static
-    buildCommand: ""
-    publishPath: "."
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app
