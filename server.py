@@ -559,7 +559,17 @@ if __name__ == '__main__':
             urllib.request.urlretrieve(url, xlsx_path)
             print("Download complete!")
         except Exception as e:
-            print(f"Error downloading SheetJS: {e}")
+            print(f"Primary download failed: {e}")
+            try:
+                fallback_url = 'https://raw.githubusercontent.com/SheetJS/sheetjs/master/xlsx.full.min.js'
+                urllib.request.urlretrieve(fallback_url, xlsx_path)
+                print("Fallback download successful!")
+            except Exception as e2:
+                print(f"Fallback download failed: {e2}")
+                # create empty placeholder
+                with open(xlsx_path, 'w') as f:
+                    f.write('')
+                print("Created empty placeholder for xlsx.full.min.js")
             
     # Run the server
     port = int(os.environ.get('PORT', 8000))
