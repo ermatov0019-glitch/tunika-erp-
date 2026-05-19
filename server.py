@@ -552,24 +552,21 @@ if __name__ == '__main__':
     if not os.path.exists(libs_dir):
         os.makedirs(libs_dir)
     xlsx_path = os.path.join(libs_dir, 'xlsx.full.min.js')
-    if not os.path.exists(xlsx_path):
+    if not os.path.exists(xlsx_path) or os.path.getsize(xlsx_path) == 0:
         try:
-            print("Downloading xlsx.full.min.js...")
-            url = 'https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js'
-            urllib.request.urlretrieve(url, xlsx_path)
+            print("Downloading xlsx.full.min.js from cdnjs...")
+            url = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                with open(xlsx_path, 'wb') as f:
+                    f.write(response.read())
             print("Download complete!")
         except Exception as e:
-            print(f"Primary download failed: {e}")
-            try:
-                fallback_url = 'https://raw.githubusercontent.com/SheetJS/sheetjs/master/xlsx.full.min.js'
-                urllib.request.urlretrieve(fallback_url, xlsx_path)
-                print("Fallback download successful!")
-            except Exception as e2:
-                print(f"Fallback download failed: {e2}")
-                # create empty placeholder
+            print(f"Download failed: {e}")
+            # create fallback empty placeholder
+            if not os.path.exists(xlsx_path):
                 with open(xlsx_path, 'w') as f:
                     f.write('')
-                print("Created empty placeholder for xlsx.full.min.js")
             
     # Run the server
     port = int(os.environ.get('PORT', 8000))
