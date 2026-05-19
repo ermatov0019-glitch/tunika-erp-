@@ -9,87 +9,184 @@ app = Flask(__name__)
 CORS(app)
 
 DB_PATH = os.environ.get('DB_PATH', 'db.sqlite')
+DATABASE_URL = os.environ.get('DATABASE_URL')
+USING_POSTGRES = DATABASE_URL is not None
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if USING_POSTGRES:
+        import psycopg2
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+def get_cursor(conn):
+    return conn.cursor()
+
+def execute_query(cursor, query, params=()):
+    if USING_POSTGRES:
+        query = query.replace('?', '%s')
+    cursor.execute(query, params)
+    return cursor
+
+def execute_many(cursor, query, params_list):
+    if USING_POSTGRES:
+        query = query.replace('?', '%s')
+    cursor.executemany(query, params_list)
+    return cursor
+
+def row_to_dict(cursor, row):
+    if row is None:
+        return None
+    if USING_POSTGRES:
+        columns = [desc[0] for desc in cursor.description]
+        return dict(zip(columns, row))
+    else:
+        return dict(row)
 
 def init_db():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Products table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        price REAL NOT NULL,
-        stock REAL NOT NULL,
-        thickness TEXT,
-        icon TEXT,
-        image TEXT
-    )''')
-    
-    # Inventory table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS inventory (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        qty REAL NOT NULL,
-        type TEXT NOT NULL,
-        date TEXT NOT NULL
-    )''')
-    
-    # Customers table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS customers (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        phone TEXT,
-        address TEXT,
-        debt REAL DEFAULT 0
-    )''')
-    
-    # Expenses table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS expenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT NOT NULL,
-        amount REAL NOT NULL,
-        category TEXT NOT NULL,
-        note TEXT
-    )''')
-    
-    # Album Styles table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS album_styles (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        image TEXT
-    )''')
-    
-    # Sales table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS sales (
-        id INTEGER PRIMARY KEY,
-        total REAL NOT NULL,
-        date TEXT NOT NULL,
-        customerId INTEGER,
-        customerName TEXT,
-        paymentMethod TEXT,
-        items TEXT
-    )''')
-    
-    # Settings table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-    )''')
+    if USING_POSTGRES:
+        # Products table
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            price REAL NOT NULL,
+            stock REAL NOT NULL,
+            thickness TEXT,
+            icon TEXT,
+            image TEXT
+        )''')
+        
+        # Inventory table
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS inventory (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            qty REAL NOT NULL,
+            type TEXT NOT NULL,
+            date TEXT NOT NULL
+        )''')
+        
+        # Customers table
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            phone TEXT,
+            address TEXT,
+            debt REAL DEFAULT 0
+        )''')
+        
+        # Expenses table
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS expenses (
+            id SERIAL PRIMARY KEY,
+            date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            category TEXT NOT NULL,
+            note TEXT
+        )''')
+        
+        # Album Styles table
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS album_styles (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            image TEXT
+        )''')
+        
+        # Sales table
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS sales (
+            id BIGINT PRIMARY KEY,
+            total REAL NOT NULL,
+            date TEXT NOT NULL,
+            customerId INTEGER,
+            customerName TEXT,
+            paymentMethod TEXT,
+            items TEXT,
+            archived INTEGER DEFAULT 0
+        )''')
+        
+        # Settings table
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )''')
+    else:
+        # SQLite table creation
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            price REAL NOT NULL,
+            stock REAL NOT NULL,
+            thickness TEXT,
+            icon TEXT,
+            image TEXT
+        )''')
+        
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            qty REAL NOT NULL,
+            type TEXT NOT NULL,
+            date TEXT NOT NULL
+        )''')
+        
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            phone TEXT,
+            address TEXT,
+            debt REAL DEFAULT 0
+        )''')
+        
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            category TEXT NOT NULL,
+            note TEXT
+        )''')
+        
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS album_styles (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            image TEXT
+        )''')
+        
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS sales (
+            id INTEGER PRIMARY KEY,
+            total REAL NOT NULL,
+            date TEXT NOT NULL,
+            customerId INTEGER,
+            customerName TEXT,
+            paymentMethod TEXT,
+            items TEXT,
+            archived INTEGER DEFAULT 0
+        )''')
+        
+        execute_query(cursor, '''
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )''')
     
     # Insert initial data if database is empty
-    cursor.execute('SELECT COUNT(*) FROM products')
+    execute_query(cursor, 'SELECT COUNT(*) FROM products')
     if cursor.fetchone()[0] == 0:
         initial_products = [
             (1, 'Tunikafon (Kafel)', 55000, 120, '0.45', '🏠', ''),
@@ -100,24 +197,24 @@ def init_db():
             (6, 'Profnastil N35 (Tom)', 58000, 90, '0.50', '📋', ''),
             (7, 'Tunika (Yassi list)', 32000, 500, '0.30', '📄', '')
         ]
-        cursor.executemany('INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)', initial_products)
+        execute_many(cursor, 'INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)', initial_products)
         
         initial_inventory = [
             ('Rulon List (Oq)', 1200, 'raw', '12.05.2026'),
             ('Rulon List (Shokolad)', 850, 'raw', '12.05.2026')
         ]
-        cursor.executemany('INSERT INTO inventory (name, qty, type, date) VALUES (?, ?, ?, ?)', initial_inventory)
+        execute_many(cursor, 'INSERT INTO inventory (name, qty, type, date) VALUES (?, ?, ?, ?)', initial_inventory)
         
-        cursor.execute('INSERT INTO customers VALUES (?, ?, ?, ?, ?)', (1, 'Umumiy Mijoz', '', '', 0))
+        execute_query(cursor, 'INSERT INTO customers VALUES (?, ?, ?, ?, ?)', (1, 'Umumiy Mijoz', '', '', 0))
         
         initial_styles = [
             (1, 'Kafel - Shokolad', ''),
             (2, 'Monterrey - Qizil', '')
         ]
-        cursor.executemany('INSERT INTO album_styles VALUES (?, ?, ?)', initial_styles)
+        execute_many(cursor, 'INSERT INTO album_styles VALUES (?, ?, ?)', initial_styles)
         
-        cursor.execute('INSERT INTO settings VALUES (?, ?)', ('shopName', 'ERMATOV ERP'))
-        cursor.execute('INSERT INTO settings VALUES (?, ?)', ('currency', "so'm"))
+        execute_query(cursor, 'INSERT INTO settings VALUES (?, ?)', ('shopName', 'ERMATOV ERP'))
+        execute_query(cursor, 'INSERT INTO settings VALUES (?, ?)', ('currency', "so'm"))
         
     conn.commit()
     conn.close()
@@ -145,21 +242,36 @@ def get_state():
     conn = get_db()
     cursor = conn.cursor()
     
-    products = [dict(row) for row in cursor.execute('SELECT * FROM products').fetchall()]
-    inventory = [dict(row) for row in cursor.execute('SELECT * FROM inventory').fetchall()]
-    customers = [dict(row) for row in cursor.execute('SELECT * FROM customers').fetchall()]
-    expenses = [dict(row) for row in cursor.execute('SELECT * FROM expenses').fetchall()]
-    album_styles = [dict(row) for row in cursor.execute('SELECT * FROM album_styles').fetchall()]
-    sales_rows = cursor.execute('SELECT * FROM sales').fetchall()
+    execute_query(cursor, 'SELECT * FROM products')
+    products = [row_to_dict(cursor, row) for row in cursor.fetchall()]
+    
+    execute_query(cursor, 'SELECT * FROM inventory')
+    inventory = [row_to_dict(cursor, row) for row in cursor.fetchall()]
+    
+    execute_query(cursor, 'SELECT * FROM customers')
+    customers = [row_to_dict(cursor, row) for row in cursor.fetchall()]
+    
+    execute_query(cursor, 'SELECT * FROM expenses')
+    expenses = [row_to_dict(cursor, row) for row in cursor.fetchall()]
+    
+    execute_query(cursor, 'SELECT * FROM album_styles')
+    album_styles = [row_to_dict(cursor, row) for row in cursor.fetchall()]
+    
+    execute_query(cursor, 'SELECT * FROM sales')
+    sales_rows = cursor.fetchall()
     
     sales = []
     for row in sales_rows:
-        d = dict(row)
+        d = row_to_dict(cursor, row)
         d['items'] = json.loads(d['items'])
         sales.append(d)
         
-    settings_rows = cursor.execute('SELECT * FROM settings').fetchall()
-    settings = {row['key']: row['value'] for row in settings_rows}
+    execute_query(cursor, 'SELECT * FROM settings')
+    settings_rows = cursor.fetchall()
+    settings = {}
+    for r in settings_rows:
+        d = row_to_dict(cursor, r)
+        settings[d['key']] = d['value']
     
     conn.close()
     
@@ -182,41 +294,41 @@ def import_state():
     
     try:
         # Clear existing data
-        cursor.execute('DELETE FROM products')
-        cursor.execute('DELETE FROM inventory')
-        cursor.execute('DELETE FROM customers')
-        cursor.execute('DELETE FROM expenses')
-        cursor.execute('DELETE FROM album_styles')
-        cursor.execute('DELETE FROM sales')
-        cursor.execute('DELETE FROM settings')
+        execute_query(cursor, 'DELETE FROM products')
+        execute_query(cursor, 'DELETE FROM inventory')
+        execute_query(cursor, 'DELETE FROM customers')
+        execute_query(cursor, 'DELETE FROM expenses')
+        execute_query(cursor, 'DELETE FROM album_styles')
+        execute_query(cursor, 'DELETE FROM sales')
+        execute_query(cursor, 'DELETE FROM settings')
         
         for p in data.get('products', []):
-            cursor.execute('INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)', 
+            execute_query(cursor, 'INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)', 
                            (p['id'], p['name'], p['price'], p['stock'], p['thickness'], p['icon'], p.get('image', '')))
             
         for i in data.get('inventory', []):
-            cursor.execute('INSERT INTO inventory (name, qty, type, date) VALUES (?, ?, ?, ?)', 
+            execute_query(cursor, 'INSERT INTO inventory (name, qty, type, date) VALUES (?, ?, ?, ?)', 
                            (i['name'], i['qty'], i['type'], i['date']))
             
         for c in data.get('customers', []):
-            cursor.execute('INSERT INTO customers VALUES (?, ?, ?, ?, ?)', 
+            execute_query(cursor, 'INSERT INTO customers VALUES (?, ?, ?, ?, ?)', 
                            (c['id'], c['name'], c.get('phone', ''), c.get('address', ''), c.get('debt', 0)))
             
         for e in data.get('expenses', []):
-            cursor.execute('INSERT INTO expenses (date, amount, category, note) VALUES (?, ?, ?, ?)', 
+            execute_query(cursor, 'INSERT INTO expenses (date, amount, category, note) VALUES (?, ?, ?, ?)', 
                            (e['date'], e['amount'], e['category'], e.get('note', '')))
             
         for s in data.get('albumStyles', []):
-            cursor.execute('INSERT INTO album_styles VALUES (?, ?, ?)', 
+            execute_query(cursor, 'INSERT INTO album_styles VALUES (?, ?, ?)', 
                            (s['id'], s['name'], s.get('image', '')))
             
         for s in data.get('sales', []):
-            cursor.execute('INSERT INTO sales (id, total, date, customerId, customerName, paymentMethod, items, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+            execute_query(cursor, 'INSERT INTO sales (id, total, date, customerId, customerName, paymentMethod, items, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
                            (s['id'], s['total'], s['date'], s['customerId'], s['customerName'], s['paymentMethod'], json.dumps(s['items']), s.get('archived', 0)))
             
         settings = data.get('settings', {})
         for k, v in settings.items():
-            cursor.execute('INSERT INTO settings VALUES (?, ?)', (k, str(v)))
+            execute_query(cursor, 'INSERT INTO settings VALUES (?, ?)', (k, str(v)))
             
         conn.commit()
         return jsonify({'status': 'success'})
@@ -232,7 +344,7 @@ def add_product():
     data = request.json
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)',
+    execute_query(cursor, 'INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?)',
                    (data['id'], data['name'], data['price'], data['stock'], data['thickness'], data['icon'], data.get('image', '')))
     conn.commit()
     conn.close()
@@ -244,10 +356,10 @@ def handle_product(pid):
     cursor = conn.cursor()
     if request.method == 'PUT':
         data = request.json
-        cursor.execute('UPDATE products SET name=?, price=?, stock=?, thickness=?, icon=?, image=? WHERE id=?',
+        execute_query(cursor, 'UPDATE products SET name=?, price=?, stock=?, thickness=?, icon=?, image=? WHERE id=?',
                        (data['name'], data['price'], data['stock'], data['thickness'], data['icon'], data.get('image', ''), pid))
     elif request.method == 'DELETE':
-        cursor.execute('DELETE FROM products WHERE id=?', (pid,))
+        execute_query(cursor, 'DELETE FROM products WHERE id=?', (pid,))
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -258,7 +370,7 @@ def add_inventory():
     data = request.json
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO inventory (name, qty, type, date) VALUES (?, ?, ?, ?)',
+    execute_query(cursor, 'INSERT INTO inventory (name, qty, type, date) VALUES (?, ?, ?, ?)',
                    (data['name'], data['qty'], data['type'], data['date']))
     conn.commit()
     conn.close()
@@ -270,11 +382,11 @@ def handle_inventory(iid):
     cursor = conn.cursor()
     if request.method == 'PUT':
         data = request.json
-        cursor.execute('UPDATE inventory SET qty=? WHERE id=?', (data['qty'], iid))
+        execute_query(cursor, 'UPDATE inventory SET qty=? WHERE id=?', (data['qty'], iid))
     elif request.method == 'DELETE':
         # In SQLite AUTOINCREMENT tables have ids, but in initial html it was an index.
         # We will handle it by Database ID
-        cursor.execute('DELETE FROM inventory WHERE id=?', (iid,))
+        execute_query(cursor, 'DELETE FROM inventory WHERE id=?', (iid,))
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -285,7 +397,7 @@ def add_customer():
     data = request.json
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO customers VALUES (?, ?, ?, ?, ?)',
+    execute_query(cursor, 'INSERT INTO customers VALUES (?, ?, ?, ?, ?)',
                    (data['id'], data['name'], data.get('phone', ''), data.get('address', ''), data.get('debt', 0)))
     conn.commit()
     conn.close()
@@ -297,10 +409,10 @@ def handle_customer(cid):
     cursor = conn.cursor()
     if request.method == 'PUT':
         data = request.json
-        cursor.execute('UPDATE customers SET name=?, phone=?, address=?, debt=? WHERE id=?',
+        execute_query(cursor, 'UPDATE customers SET name=?, phone=?, address=?, debt=? WHERE id=?',
                        (data['name'], data.get('phone', ''), data.get('address', ''), data.get('debt', 0), cid))
     elif request.method == 'DELETE':
-        cursor.execute('DELETE FROM customers WHERE id=?', (cid,))
+        execute_query(cursor, 'DELETE FROM customers WHERE id=?', (cid,))
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -311,7 +423,7 @@ def add_expense():
     data = request.json
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO expenses (date, amount, category, note) VALUES (?, ?, ?, ?)',
+    execute_query(cursor, 'INSERT INTO expenses (date, amount, category, note) VALUES (?, ?, ?, ?)',
                    (data['date'], data['amount'], data['category'], data.get('note', '')))
     conn.commit()
     conn.close()
@@ -321,7 +433,7 @@ def add_expense():
 def delete_expense(eid):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('DELETE FROM expenses WHERE id=?', (eid,))
+    execute_query(cursor, 'DELETE FROM expenses WHERE id=?', (eid,))
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -332,8 +444,12 @@ def add_style():
     data = request.json
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('INSERT OR REPLACE INTO album_styles VALUES (?, ?, ?)',
-                   (data['id'], data['name'], data.get('image', '')))
+    if USING_POSTGRES:
+        execute_query(cursor, 'INSERT INTO album_styles (id, name, image) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, image = EXCLUDED.image',
+                      (data['id'], data['name'], data.get('image', '')))
+    else:
+        execute_query(cursor, 'INSERT OR REPLACE INTO album_styles VALUES (?, ?, ?)',
+                      (data['id'], data['name'], data.get('image', '')))
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -342,7 +458,7 @@ def add_style():
 def delete_style(sid):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('DELETE FROM album_styles WHERE id=?', (sid,))
+    execute_query(cursor, 'DELETE FROM album_styles WHERE id=?', (sid,))
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -356,16 +472,16 @@ def add_sale():
     
     try:
         # Save sale
-        cursor.execute('INSERT INTO sales (id, total, date, customerId, customerName, paymentMethod, items, archived) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
+        execute_query(cursor, 'INSERT INTO sales (id, total, date, customerId, customerName, paymentMethod, items, archived) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
                        (data['id'], data['total'], data['date'], data['customerId'], data['customerName'], data['paymentMethod'], json.dumps(data['items'])))
         
         # Update customer debt if paymentMethod is 'Nasiya'
         if data['paymentMethod'] == 'Nasiya':
-            cursor.execute('UPDATE customers SET debt = debt + ? WHERE id = ?', (data['total'], data['customerId']))
+            execute_query(cursor, 'UPDATE customers SET debt = debt + ? WHERE id = ?', (data['total'], data['customerId']))
             
         # Reduce product stock
         for item in data['items']:
-            cursor.execute('UPDATE products SET stock = stock - ? WHERE id = ?', (item['qty'], item['id']))
+            execute_query(cursor, 'UPDATE products SET stock = stock - ? WHERE id = ?', (item['qty'], item['id']))
             
         conn.commit()
         return jsonify({'status': 'success'})
@@ -380,7 +496,7 @@ def add_sale():
 def reset_sales():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('DELETE FROM sales')
+    execute_query(cursor, 'DELETE FROM sales')
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -392,7 +508,7 @@ def archive_sales():
     date_str = data.get('date')
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('UPDATE sales SET archived = 1 WHERE date LIKE ?', (f'%{date_str}%',))
+    execute_query(cursor, 'UPDATE sales SET archived = 1 WHERE date LIKE ?', (f'%{date_str}%',))
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -403,7 +519,10 @@ def save_settings():
     conn = get_db()
     cursor = conn.cursor()
     for k, v in data.items():
-        cursor.execute('INSERT OR REPLACE INTO settings VALUES (?, ?)', (k, str(v)))
+        if USING_POSTGRES:
+            execute_query(cursor, 'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', (k, str(v)))
+        else:
+            execute_query(cursor, 'INSERT OR REPLACE INTO settings VALUES (?, ?)', (k, str(v)))
     conn.commit()
     conn.close()
     return jsonify({'status': 'success'})
@@ -411,9 +530,17 @@ def save_settings():
 if __name__ == '__main__':
     # Update sales schema to include archived if not exists
     conn = get_db()
+    cursor = conn.cursor()
     try:
-        conn.cursor().execute('ALTER TABLE sales ADD COLUMN archived INTEGER DEFAULT 0')
-        conn.commit()
+        if USING_POSTGRES:
+            try:
+                execute_query(cursor, 'ALTER TABLE sales ADD COLUMN archived INTEGER DEFAULT 0')
+                conn.commit()
+            except Exception:
+                conn.rollback()
+        else:
+            execute_query(cursor, 'ALTER TABLE sales ADD COLUMN archived INTEGER DEFAULT 0')
+            conn.commit()
     except sqlite3.OperationalError:
         pass # Column already exists
     conn.close()
