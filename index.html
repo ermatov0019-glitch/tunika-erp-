@@ -656,6 +656,11 @@
             }
         }
 
+        // Backend URL: localhost'da relative, Render'da to'liq URL
+        const BACKEND_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+            ? ''
+            : 'https://tunika-erp-backend.onrender.com';
+
         async function apiCall(url, method = 'GET', data = null) {
             if (isOfflineMode) {
                 return mimicApiCall(url, method, data);
@@ -670,7 +675,7 @@
                 options.body = JSON.stringify(data);
             }
             try {
-                const res = await fetch(url, options);
+                const res = await fetch(BACKEND_URL + url, options);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 return await res.json();
             } catch (err) {
@@ -683,9 +688,9 @@
             const currentCart = state.cart || [];
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
                 
-                const res = await fetch('/api/state', {
+                const res = await fetch(BACKEND_URL + '/api/state', {
                     headers: { 'Content-Type': 'application/json' },
                     signal: controller.signal
                 });
