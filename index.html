@@ -891,6 +891,7 @@
 
         function addProductToCartById(id) {
             const p = state.products.find(x => x.id === id);
+            if (!p) return;
             const calcVal = quickCalcInput.value.replace(/ /g, '').replace('x', '*');
             let length, count;
 
@@ -981,9 +982,9 @@
             const saleId = Date.now();
             const now = new Date();
             const total = state.cart.reduce((acc, c) => acc + (c.price * c.qty), 0);
-            const customerId = parseInt(document.getElementById('pos-customer-select').value);
+            const customerId = parseInt(document.getElementById('pos-customer-select').value) || 1;
             const paymentMethod = document.getElementById('pos-payment-method').value;
-            const customer = state.customers.find(c => c.id === customerId);
+            const customer = state.customers.find(c => c.id === customerId) || { name: 'Umumiy Mijoz' };
 
             // Populate Thermal Receipt
             document.getElementById('receipt-date').textContent = now.toLocaleString();
