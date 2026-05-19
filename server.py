@@ -211,8 +211,8 @@ def import_state():
                            (s['id'], s['name'], s.get('image', '')))
             
         for s in data.get('sales', []):
-            cursor.execute('INSERT INTO sales VALUES (?, ?, ?, ?, ?, ?, ?)', 
-                           (s['id'], s['total'], s['date'], s['customerId'], s['customerName'], s['paymentMethod'], json.dumps(s['items'])))
+            cursor.execute('INSERT INTO sales (id, total, date, customerId, customerName, paymentMethod, items, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+                           (s['id'], s['total'], s['date'], s['customerId'], s['customerName'], s['paymentMethod'], json.dumps(s['items']), s.get('archived', 0)))
             
         settings = data.get('settings', {})
         for k, v in settings.items():
@@ -356,7 +356,7 @@ def add_sale():
     
     try:
         # Save sale
-        cursor.execute('INSERT INTO sales VALUES (?, ?, ?, ?, ?, ?, ?)',
+        cursor.execute('INSERT INTO sales (id, total, date, customerId, customerName, paymentMethod, items, archived) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
                        (data['id'], data['total'], data['date'], data['customerId'], data['customerName'], data['paymentMethod'], json.dumps(data['items'])))
         
         # Update customer debt if paymentMethod is 'Nasiya'
