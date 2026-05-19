@@ -305,6 +305,11 @@
     </style>
 </head>
 <body>
+    <div id="connection-status-banner" style="display:none; background: linear-gradient(90deg, #ff4e50, #f9d423); color: black; padding: 12px 20px; text-align: center; font-weight: bold; font-size: 0.95rem; z-index: 10000; position: relative; border-bottom: 2px solid #ff4d4d; box-shadow: 0 5px 15px rgba(255, 78, 80, 0.3); font-family: inherit;">
+        ⚠️ DIQQAT: Tizim serveriga ulanish imkoni bo'lmadi! Hozir <b>Offline (Brauzer Xotirasi)</b> rejimida ishlayapsiz. Ma'lumotlaringiz faqat shu qurilmada saqlanadi. 
+        <button onclick="refreshState().then(() => { if(!isOfflineMode) { alert('Serverga ulandi!'); location.reload(); } else alert('Server hali ham o\'chirilgan.'); })" style="margin-left: 15px; padding: 6px 12px; background: black; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: 0.2s;">Qayta tekshirish 🔄</button>
+    </div>
+
     <div class="glow-sphere sphere-1"></div>
     <div class="glow-sphere sphere-2"></div>
 
@@ -570,7 +575,55 @@
             settings: { shopName: 'ERMATOV ERP', currency: "so'm" }
         };
 
+        let isOfflineMode = false;
+
+        function saveStateToLocalStorage() {
+            localStorage.setItem('tunika_erp_state', JSON.stringify(state));
+        }
+
+        function loadStateFromLocalStorage() {
+            const saved = localStorage.getItem('tunika_erp_state');
+            if (saved) {
+                try {
+                    state = JSON.parse(saved);
+                } catch(e) {
+                    console.error("Error parsing saved state:", e);
+                }
+            } else {
+                // Default initial state
+                state = {
+                    products: [
+                        { id: 1, name: 'Tunikafon (Kafel)', price: 55000, stock: 120, thickness: '0.45', icon: '🏠', image: '' },
+                        { id: 2, name: 'Tunikafon (Monterrey)', price: 62000, stock: 85, thickness: '0.50', icon: '🏠', image: '' },
+                        { id: 3, name: 'Tunikafon (Klassik)', price: 48000, stock: 200, thickness: '0.40', icon: '🏠', image: '' },
+                        { id: 4, name: 'Profnastil N10', price: 38000, stock: 300, thickness: '0.35', icon: '📋', image: '' },
+                        { id: 5, name: 'Profnastil N20', price: 45000, stock: 150, thickness: '0.45', icon: '📋', image: '' },
+                        { id: 6, name: 'Profnastil N35 (Tom)', price: 58000, stock: 90, thickness: '0.50', icon: '📋', image: '' },
+                        { id: 7, name: 'Tunika (Yassi list)', price: 32000, stock: 500, thickness: '0.30', icon: '📄', image: '' }
+                    ],
+                    inventory: [
+                        { id: 1, name: 'Rulon List (Oq)', qty: 1200, type: 'raw', date: '12.05.2026' },
+                        { id: 2, name: 'Rulon List (Shokolad)', qty: 850, type: 'raw', date: '12.05.2026' }
+                    ],
+                    customers: [
+                        { id: 1, name: 'Umumiy Mijoz', phone: '', address: '', debt: 0 }
+                    ],
+                    expenses: [],
+                    albumStyles: [
+                        { id: 1, name: 'Kafel - Shokolad', image: '' },
+                        { id: 2, name: 'Monterrey - Qizil', image: '' }
+                    ],
+                    sales: [],
+                    settings: { shopName: 'ERMATOV ERP', currency: "so'm" }
+                };
+                saveStateToLocalStorage();
+            }
+        }
+
         async function apiCall(url, method = 'GET', data = null) {
+            if (isOfflineMode) {
+                return mimicApiCall(url, method, data);
+            }
             const options = {
                 method,
                 headers: {
@@ -582,6 +635,7 @@
             }
             try {
                 const res = await fetch(url, options);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 return await res.json();
             } catch (err) {
                 console.error("API Error:", err);
@@ -591,11 +645,164 @@
 
         async function refreshState() {
             const currentCart = state.cart || [];
-            const data = await apiCall('/api/state');
-            if (data && !data.status) {
-                state = data;
-                state.cart = currentCart;
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                
+                const res = await fetch('/api/state', {
+                    headers: { 'Content-Type': 'application/json' },
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && !data.status) {
+                        state = data;
+                        state.cart = currentCart;
+                        isOfflineMode = false;
+                        document.getElementById('connection-status-banner').style.display = 'none';
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn("Could not connect to API server. Falling back to local storage.", err);
             }
+            
+            // Fallback to offline mode
+            isOfflineMode = true;
+            document.getElementById('connection-status-banner').style.display = 'block';
+            loadStateFromLocalStorage();
+            state.cart = currentCart;
+        }
+
+        function saveState() {
+            if (isOfflineMode) saveStateToLocalStorage();
+        }
+
+        function mimicApiCall(url, method, data) {
+            console.log(`[Offline Mode] Mimicking ${method} ${url}`, data);
+            const parts = url.split('/').filter(x => x);
+            const resource = parts[1];
+            const id = parts[2] ? parseInt(parts[2]) : null;
+
+            if (resource === 'state') {
+                if (parts[2] === 'import' && method === 'POST') {
+                    state = data;
+                    saveStateToLocalStorage();
+                    return { status: 'success' };
+                }
+                return state;
+            }
+
+            if (resource === 'products') {
+                if (method === 'POST') {
+                    state.products.push(data);
+                } else if (method === 'PUT' && id !== null) {
+                    const idx = state.products.findIndex(p => p.id === id);
+                    if (idx !== -1) state.products[idx] = { ...state.products[idx], ...data };
+                } else if (method === 'DELETE' && id !== null) {
+                    state.products = state.products.filter(p => p.id !== id);
+                }
+                saveStateToLocalStorage();
+                return { status: 'success' };
+            }
+
+            if (resource === 'inventory') {
+                if (method === 'POST') {
+                    const newItem = { id: Date.now(), ...data };
+                    state.inventory.push(newItem);
+                } else if (method === 'PUT' && id !== null) {
+                    const idx = state.inventory.findIndex(i => i.id === id);
+                    if (idx !== -1) state.inventory[idx] = { ...state.inventory[idx], ...data };
+                } else if (method === 'DELETE' && id !== null) {
+                    state.inventory = state.inventory.filter(i => i.id !== id);
+                }
+                saveStateToLocalStorage();
+                return { status: 'success' };
+            }
+
+            if (resource === 'customers') {
+                if (method === 'POST') {
+                    state.customers.push(data);
+                } else if (method === 'PUT' && id !== null) {
+                    const idx = state.customers.findIndex(c => c.id === id);
+                    if (idx !== -1) state.customers[idx] = { ...state.customers[idx], ...data };
+                } else if (method === 'DELETE' && id !== null) {
+                    state.customers = state.customers.filter(c => c.id !== id);
+                }
+                saveStateToLocalStorage();
+                return { status: 'success' };
+            }
+
+            if (resource === 'expenses') {
+                if (method === 'POST') {
+                    const newItem = { id: Date.now(), ...data };
+                    state.expenses.push(newItem);
+                } else if (method === 'DELETE' && id !== null) {
+                    state.expenses = state.expenses.filter(e => e.id !== id);
+                }
+                saveStateToLocalStorage();
+                return { status: 'success' };
+            }
+
+            if (resource === 'album_styles') {
+                if (method === 'POST') {
+                    const idx = state.albumStyles.findIndex(x => x.id === data.id);
+                    if (idx !== -1) {
+                        state.albumStyles[idx] = data;
+                    } else {
+                        state.albumStyles.push(data);
+                    }
+                } else if (method === 'DELETE' && id !== null) {
+                    state.albumStyles = state.albumStyles.filter(s => s.id !== id);
+                }
+                saveStateToLocalStorage();
+                return { status: 'success' };
+            }
+
+            if (resource === 'sales') {
+                if (parts[2] === 'reset' && method === 'POST') {
+                    state.sales = [];
+                    saveStateToLocalStorage();
+                    return { status: 'success' };
+                }
+                if (parts[2] === 'archive' && method === 'POST') {
+                    const dateStr = data.date;
+                    state.sales.forEach(s => {
+                        if (s.date.includes(dateStr)) s.archived = 1;
+                    });
+                    saveStateToLocalStorage();
+                    return { status: 'success' };
+                }
+                if (method === 'POST') {
+                    // Update product stocks
+                    data.items.forEach(cartItem => {
+                        const p = state.products.find(x => x.id === cartItem.id);
+                        if (p) p.stock = parseFloat((p.stock - cartItem.qty).toFixed(2));
+                    });
+                    
+                    // Update customer debt if paymentMethod is 'Nasiya'
+                    if (data.paymentMethod === 'Nasiya') {
+                        const c = state.customers.find(x => x.id === data.customerId);
+                        if (c) c.debt = parseFloat(((c.debt || 0) + data.total).toFixed(2));
+                    }
+                    
+                    state.sales.push({ ...data, archived: 0 });
+                    saveStateToLocalStorage();
+                    return { status: 'success' };
+                }
+            }
+
+            if (resource === 'settings') {
+                if (method === 'POST') {
+                    state.settings = { ...state.settings, ...data };
+                    saveStateToLocalStorage();
+                    return { status: 'success' };
+                }
+            }
+
+            return { status: 'error', message: 'Unknown endpoint' };
         }
 
         function saveState() {
