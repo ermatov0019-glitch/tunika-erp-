@@ -13,6 +13,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Tunika ERP">
     <link rel="apple-touch-icon" href="https://img.icons8.com/clouds/500/business.png">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#020205">
     <style>
         :root {
             --bg-deep: #020205;
@@ -554,48 +558,48 @@
     </div>
 
     <script>
-        const initialProducts = [
-            { id: 1, name: 'Tunikafon (Kafel)', price: 55000, stock: 120, thickness: '0.45', icon: '🏠', image: '' },
-            { id: 2, name: 'Tunikafon (Monterrey)', price: 62000, stock: 85, thickness: '0.50', icon: '🏠', image: '' },
-            { id: 3, name: 'Tunikafon (Klassik)', price: 48000, stock: 200, thickness: '0.40', icon: '🏠', image: '' },
-            { id: 4, name: 'Profnastil N10', price: 38000, stock: 300, thickness: '0.35', icon: '📋', image: '' },
-            { id: 5, name: 'Profnastil N20', price: 45000, stock: 150, thickness: '0.45', icon: '📋', image: '' },
-            { id: 6, name: 'Profnastil N35 (Tom)', price: 58000, stock: 90, thickness: '0.50', icon: '📋', image: '' },
-            { id: 7, name: 'Tunika (Yassi list)', price: 32000, stock: 500, thickness: '0.30', icon: '📄', image: '' }
-        ];
+        let state = {
+            products: [],
+            inventory: [],
+            sales: [],
+            cart: [],
+            customers: [],
+            expenses: [],
+            albumStyles: [],
+            settings: { shopName: 'ERMATOV ERP', currency: "so'm" }
+        };
 
-        const initialInventory = [
-            { name: 'Rulon List (Oq)', qty: 1200, type: 'raw', date: '12.05.2026' },
-            { name: 'Rulon List (Shokolad)', qty: 850, type: 'raw', date: '12.05.2026' }
-        ];
-
-        let state = JSON.parse(localStorage.getItem('tunika_erp_state'));
-        if (!state || !state.products.find(p => p.name.includes('Tunikafon'))) {
-            state = { 
-                products: initialProducts, 
-                inventory: initialInventory, 
-                sales: [], 
-                cart: [],
-                customers: [
-                    { id: 1, name: 'Umumiy Mijoz', phone: '', address: '', debt: 0 }
-                ],
-                expenses: [],
-                albumStyles: [
-                    { id: 1, name: 'Kafel - Shokolad', image: '' },
-                    { id: 2, name: 'Monterrey - Qizil', image: '' }
-                ],
-                settings: {
-                    shopName: 'ERMATOV ERP',
-                    currency: 'so\'m'
+        async function apiCall(url, method = 'GET', data = null) {
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json'
                 }
             };
-            localStorage.setItem('tunika_erp_state', JSON.stringify(state));
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+            try {
+                const res = await fetch(url, options);
+                return await res.json();
+            } catch (err) {
+                console.error("API Error:", err);
+                return { status: 'error', message: err.message };
+            }
         }
-        if (!state.customers) state.customers = [{ id: 1, name: 'Umumiy Mijoz', phone: '', address: '', debt: 0 }];
-        if (!state.expenses) state.expenses = [];
-        if (!state.settings) state.settings = { shopName: 'ERMATOV ERP', currency: 'so\'m' };
-        if (!state.albumStyles) { state.albumStyles = []; }
-        saveState();
+
+        async function refreshState() {
+            const currentCart = state.cart || [];
+            const data = await apiCall('/api/state');
+            if (data && !data.status) {
+                state = data;
+                state.cart = currentCart;
+            }
+        }
+
+        function saveState() {
+            // Deprecated: State is saved directly to SQLite backend
+        }
 
         const sections = document.querySelectorAll('section');
         const navLinks = document.querySelectorAll('.nav-links li');
@@ -797,17 +801,31 @@
             modalOverlay.classList.remove('hidden');
         }
 
-        function deleteProduct(id) { if(confirm("O'chirilsinmi?")) { state.products = state.products.filter(x => x.id !== id); saveState(); renderCatalog(); } }
+        async function deleteProduct(id) { 
+            if(confirm("O'chirilsinmi?")) { 
+                await apiCall(`/api/products/${id}`, 'DELETE');
+                await refreshState();
+                renderCatalog(); 
+            } 
+        }
 
-        document.getElementById('inventory-input-form').onsubmit = (e) => {
+        document.getElementById('inventory-input-form').onsubmit = async (e) => {
             e.preventDefault();
-            state.inventory.push({ name: document.getElementById('item-name').value, qty: parseFloat(document.getElementById('item-qty').value), type: document.getElementById('item-type').value, date: new Date().toLocaleDateString() });
-            saveState(); renderInventory(); e.target.reset();
+            const newItem = { 
+                name: document.getElementById('item-name').value, 
+                qty: parseFloat(document.getElementById('item-qty').value), 
+                type: document.getElementById('item-type').value, 
+                date: new Date().toLocaleDateString() 
+            };
+            await apiCall('/api/inventory', 'POST', newItem);
+            await refreshState();
+            renderInventory(); 
+            e.target.reset();
         };
 
         function renderInventory() {
             inventoryTable.innerHTML = '';
-            state.inventory.forEach((i, index) => {
+            state.inventory.forEach((i) => {
                 const r = document.createElement('tr');
                 r.innerHTML = `
                     <td>${i.name}</td>
@@ -815,27 +833,29 @@
                     <td>${i.qty} m</td>
                     <td>${i.date}</td>
                     <td class="no-print">
-                        <button class="neon-btn mini" onclick="editInventory(${index})" style="padding:4px 8px; font-size:0.7rem">✎</button>
-                        <button class="neon-btn mini" onclick="deleteInventory(${index})" style="padding:4px 8px; font-size:0.7rem; background:rgba(255,0,0,0.2); border:1px solid red; color:red">✕</button>
+                        <button class="neon-btn mini" onclick="editInventory(${i.id})" style="padding:4px 8px; font-size:0.7rem">✎</button>
+                        <button class="neon-btn mini" onclick="deleteInventory(${i.id})" style="padding:4px 8px; font-size:0.7rem; background:rgba(255,0,0,0.2); border:1px solid red; color:red">✕</button>
                     </td>
                 `;
                 inventoryTable.appendChild(r);
             });
         }
 
-        function deleteInventory(index) {
+        async function deleteInventory(id) {
             if(confirm("Ushbu yozuv ombordan o'chirilsinmi?")) {
-                state.inventory.splice(index, 1);
-                saveState(); renderInventory(); renderDashboard();
+                await apiCall(`/api/inventory/${id}`, 'DELETE');
+                await refreshState();
+                renderInventory(); renderDashboard();
             }
         }
 
-        function editInventory(index) {
-            const item = state.inventory[index];
+        async function editInventory(id) {
+            const item = state.inventory.find(i => i.id === id);
             const newQty = prompt("Yangi miqdorni kiriting (m):", item.qty);
             if(newQty !== null) {
-                item.qty = parseFloat(newQty);
-                saveState(); renderInventory(); renderDashboard();
+                await apiCall(`/api/inventory/${id}`, 'PUT', { qty: parseFloat(newQty) });
+                await refreshState();
+                renderInventory(); renderDashboard();
             }
         }
 
@@ -955,7 +975,7 @@
             renderCart();
         }
 
-        document.getElementById('checkout-btn').onclick = () => {
+        document.getElementById('checkout-btn').onclick = async () => {
             if(state.cart.length === 0) return;
             
             const saleId = Date.now();
@@ -965,11 +985,6 @@
             const paymentMethod = document.getElementById('pos-payment-method').value;
             const customer = state.customers.find(c => c.id === customerId);
 
-            // Nasiya bo'lsa mijoz qarziga qo'shish
-            if(paymentMethod === 'Nasiya') {
-                customer.debt = (customer.debt || 0) + total;
-            }
-            
             // Populate Thermal Receipt
             document.getElementById('receipt-date').textContent = now.toLocaleString();
             document.getElementById('receipt-customer').textContent = customer.name;
@@ -992,22 +1007,22 @@
                 receiptBody.appendChild(row);
             });
 
-            state.sales.push({ 
+            const newSale = { 
                 id: saleId, 
                 total, 
                 date: now.toLocaleString(), 
                 customerId, 
                 customerName: customer.name,
                 paymentMethod,
-                items: JSON.parse(JSON.stringify(state.cart)) 
-            });
+                items: JSON.parse(JSON.stringify(state.cart))
+            };
+
+            await apiCall('/api/sales', 'POST', newSale);
             
-            state.cart.forEach(ci => { const p = state.products.find(x => x.id === ci.id); if(p) p.stock -= ci.qty; });
-            
-            setTimeout(() => {
+            setTimeout(async () => {
                 window.print(); 
                 state.cart = []; 
-                saveState(); 
+                await refreshState();
                 renderPOS(); 
                 renderCart(); 
                 renderDashboard();
@@ -1069,43 +1084,43 @@
             document.getElementById('modal-save').onclick = saveStyle;
         }
 
-        function saveStyle() {
+        async function saveStyle() {
             const name = document.getElementById('style-name').value;
             const imgData = pendingImageData;
             if (editingStyleId) {
                 const s = state.albumStyles.find(x => x.id === editingStyleId);
-                s.name = name;
-                if (imgData) s.image = imgData;
+                const updated = { id: editingStyleId, name, image: imgData || s.image };
+                await apiCall('/api/album_styles', 'POST', updated);
             } else {
-                state.albumStyles.push({ id: Date.now(), name, image: imgData });
+                await apiCall('/api/album_styles', 'POST', { id: Date.now(), name, image: imgData });
             }
             pendingImageData = '';
-            saveState(); renderAlbum();
+            await refreshState(); renderAlbum();
             modalOverlay.classList.add('hidden');
             // Restore default modal save for products
             document.getElementById('modal-save').onclick = defaultProductSave;
         }
 
-        function deleteStyle(id) {
+        async function deleteStyle(id) {
             if(confirm("Ushbu fasonni albomdan o'chirishni xohlaysizmi?")) {
-                state.albumStyles = state.albumStyles.filter(x => x.id !== id);
-                saveState(); renderAlbum();
+                await apiCall(`/api/album_styles/${id}`, 'DELETE');
+                await refreshState(); renderAlbum();
             }
         }
 
-        const defaultProductSave = () => {
+        const defaultProductSave = async () => {
             const n = document.getElementById('modal-name').value, pr = parseFloat(document.getElementById('modal-price').value), 
                   st = parseInt(document.getElementById('modal-stock').value), th = document.getElementById('modal-thick').value, ic = document.getElementById('modal-icon').value;
             const imgData = pendingImageData;
             if(editingProductId) {
                 const p = state.products.find(x => x.id === editingProductId);
-                p.name = n; p.price = pr; p.stock = st; p.thickness = th; p.icon = ic;
-                if(imgData) p.image = imgData;
+                const updated = { name: n, price: pr, stock: st, thickness: th, icon: ic, image: imgData || p.image };
+                await apiCall(`/api/products/${editingProductId}`, 'PUT', updated);
             } else {
-                state.products.push({ id: Date.now(), name: n, price: pr, stock: st, thickness: th, icon: ic, image: imgData });
+                await apiCall('/api/products', 'POST', { id: Date.now(), name: n, price: pr, stock: st, thickness: th, icon: ic, image: imgData });
             }
             pendingImageData = '';
-            saveState(); renderCatalog(); renderPOS(); modalOverlay.classList.add('hidden');
+            await refreshState(); renderCatalog(); renderPOS(); modalOverlay.classList.add('hidden');
         };
 
         function renderCustomers() {
@@ -1137,12 +1152,15 @@
                 <div class="input-group"><label>Qarzdorlik (so'm)</label><input type="number" id="cust-debt" value="${c.debt || 0}"></div>
             `;
             modalOverlay.classList.remove('hidden');
-            document.getElementById('modal-save').onclick = () => {
-                c.name = document.getElementById('cust-name').value;
-                c.phone = document.getElementById('cust-phone').value;
-                c.address = document.getElementById('cust-address').value;
-                c.debt = parseFloat(document.getElementById('cust-debt').value) || 0;
-                saveState(); renderCustomers(); modalOverlay.classList.add('hidden');
+            document.getElementById('modal-save').onclick = async () => {
+                const updated = {
+                    name: document.getElementById('cust-name').value,
+                    phone: document.getElementById('cust-phone').value,
+                    address: document.getElementById('cust-address').value,
+                    debt: parseFloat(document.getElementById('cust-debt').value) || 0
+                };
+                await apiCall(`/api/customers/${id}`, 'PUT', updated);
+                await refreshState(); renderCustomers(); modalOverlay.classList.add('hidden');
                 document.getElementById('modal-save').onclick = defaultProductSave;
             };
         }
@@ -1155,35 +1173,35 @@
                 <div class="input-group"><label>Manzil</label><input type="text" id="cust-address"></div>
             `;
             modalOverlay.classList.remove('hidden');
-            document.getElementById('modal-save').onclick = () => {
+            document.getElementById('modal-save').onclick = async () => {
                 const name = document.getElementById('cust-name').value;
                 const phone = document.getElementById('cust-phone').value;
                 const address = document.getElementById('cust-address').value;
-                state.customers.push({ id: Date.now(), name, phone, address, debt: 0 });
-                saveState(); renderCustomers(); modalOverlay.classList.add('hidden');
+                await apiCall('/api/customers', 'POST', { id: Date.now(), name, phone, address, debt: 0 });
+                await refreshState(); renderCustomers(); modalOverlay.classList.add('hidden');
                 document.getElementById('modal-save').onclick = defaultProductSave;
             };
         };
 
-        function deleteCustomer(id) {
+        async function deleteCustomer(id) {
             if(id === 1) return alert("Asosiy mijozni o'chirib bo'lmaydi.");
             if(confirm("Mijoz o'chirilsinmi?")) {
-                state.customers = state.customers.filter(c => c.id !== id);
-                saveState(); renderCustomers();
+                await apiCall(`/api/customers/${id}`, 'DELETE');
+                await refreshState(); renderCustomers();
             }
         }
 
         function renderExpenses() {
             const tbody = document.getElementById('expenses-table-body');
             tbody.innerHTML = '';
-            state.expenses.forEach((e, idx) => {
+            state.expenses.forEach((e) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${e.date}</td>
                     <td><span class="ai-mark">${e.category}</span></td>
                     <td>${e.note}</td>
                     <td style="color:#ff4d4d; font-weight:bold">${e.amount.toLocaleString()} so'm</td>
-                    <td><button class="neon-btn mini" onclick="deleteExpense(${idx})" style="background:red">✕</button></td>
+                    <td><button class="neon-btn mini" onclick="deleteExpense(${e.id})" style="background:red">✕</button></td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -1206,28 +1224,28 @@
                 <div class="input-group"><label>Izoh</label><input type="text" id="exp-note"></div>
             `;
             modalOverlay.classList.remove('hidden');
-            document.getElementById('modal-save').onclick = () => {
+            document.getElementById('modal-save').onclick = async () => {
                 const amount = parseFloat(document.getElementById('exp-amount').value);
                 const category = document.getElementById('exp-cat').value;
                 const note = document.getElementById('exp-note').value;
-                state.expenses.push({ date: new Date().toLocaleDateString(), amount, category, note });
-                saveState(); renderExpenses(); renderDashboard(); modalOverlay.classList.add('hidden');
+                await apiCall('/api/expenses', 'POST', { date: new Date().toLocaleDateString(), amount, category, note });
+                await refreshState(); renderExpenses(); renderDashboard(); modalOverlay.classList.add('hidden');
                 document.getElementById('modal-save').onclick = defaultProductSave;
             };
         };
 
-        function deleteExpense(idx) {
+        async function deleteExpense(id) {
             if(confirm("Xarajat o'chirilsinmi?")) {
-                state.expenses.splice(idx, 1);
-                saveState(); renderExpenses(); renderDashboard();
+                await apiCall(`/api/expenses/${id}`, 'DELETE');
+                await refreshState(); renderExpenses(); renderDashboard();
             }
         }
 
         function renderSettings() {
-            document.getElementById('settings-shop-name').value = state.settings.shopName;
-            document.getElementById('settings-shop-name').onchange = (e) => {
+            document.getElementById('settings-shop-name').value = state.settings.shopName || '';
+            document.getElementById('settings-shop-name').onchange = async (e) => {
                 state.settings.shopName = e.target.value;
-                saveState();
+                await apiCall('/api/settings', 'POST', { shopName: e.target.value });
             };
         }
 
@@ -1245,13 +1263,16 @@
             const file = input.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = (e) => {
+                reader.onload = async (e) => {
                     try {
                         const importedState = JSON.parse(e.target.result);
                         if (importedState.products && importedState.sales) {
-                            state = importedState;
-                            saveState();
-                            location.reload();
+                            const res = await apiCall('/api/state/import', 'POST', importedState);
+                            if (res.status === 'success') {
+                                location.reload();
+                            } else {
+                                alert("Xatolik: " + res.message);
+                            }
                         } else {
                             alert("Noto'g'ri fayl formati!");
                         }
@@ -1345,7 +1366,7 @@
             XLSX.writeFile(wb, filename);
         }
 
-        function endDay() {
+        async function endDay() {
             const now = new Date();
             const todayStr = now.toLocaleDateString();
             const todaySales = state.sales.filter(s => s.date.includes(todayStr) && !s.archived);
@@ -1356,20 +1377,18 @@
             }
 
             if (confirm(`Kunni yakunlashni xohlaysizmi? \nJami: ${todaySales.length} ta sotuv arxivlanadi.`)) {
-                state.sales.forEach(s => {
-                    if (s.date.includes(todayStr)) s.archived = true;
-                });
-                saveState();
+                await apiCall('/api/sales/archive', 'POST', { date: todayStr });
+                await refreshState();
                 renderReports();
                 renderDashboard();
                 alert("Kun yakunlandi. Yangi hisob ochildi.");
             }
         }
 
-        function clearHistory() {
+        async function clearHistory() {
             if (confirm("DIQQAT! Barcha sotuvlar tarixi butunlay o'chirib tashlanadi. Buni tasdiqlaysizmi?")) {
-                state.sales = [];
-                saveState();
+                await apiCall('/api/sales/reset', 'POST');
+                await refreshState();
                 renderReports();
                 renderDashboard();
                 alert("Barcha ma'lumotlar tozalandi.");
@@ -1388,7 +1407,8 @@
         }
 
         document.getElementById('modal-close').onclick = () => modalOverlay.classList.add('hidden');
-        function init() { 
+        async function init() { 
+            await refreshState();
             renderDashboard(); 
             renderCatalog(); 
             renderInventory(); 
@@ -1429,6 +1449,17 @@
             });
         }
         init();
+
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(registration => {
+                    console.log('SW registered: ', registration.scope);
+                }).catch(err => {
+                    console.log('SW registration failed: ', err);
+                });
+            });
+        }
     </script>
     <div id="thermal-receipt" class="print-only">
         <div class="receipt-header">
