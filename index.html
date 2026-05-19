@@ -302,6 +302,27 @@
             .nav-logo { font-size: 1.2rem; margin-bottom: 30px; }
             .content { padding: 15px; padding-top: 70px; }
         }
+
+        .report-quick-btn {
+            background: rgba(0, 242, 255, 0.1);
+            border: 1px solid rgba(0, 242, 255, 0.35);
+            color: var(--neon-cyan);
+            padding: 6px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            font-family: inherit;
+            transition: background 0.2s, transform 0.15s;
+        }
+        .report-quick-btn:hover {
+            background: rgba(0, 242, 255, 0.25);
+            transform: translateY(-1px);
+        }
+        #report-date-picker::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(0.8);
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -518,23 +539,38 @@
                 </section>
 
                 <section id="reports" class="hidden-section">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px">
                         <h2>📈 Kunlik Hisobotlar</h2>
-                        <div style="display:flex; gap:10px">
+                        <div style="display:flex; gap:10px; flex-wrap:wrap">
                             <button class="neon-btn mini" onclick="exportToExcel()" style="background: #217346; color: white;">📥 Excelga Eksport</button>
                             <button class="neon-btn mini" onclick="endDay()" style="background: #d11a2a; color: white;">💾 Kunni Yakunlash</button>
                             <button class="neon-btn mini" onclick="clearHistory()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;">🧹 Tarixni Tozalash</button>
                         </div>
                     </div>
-                    
+
+                    <!-- 📅 CALENDAR DATE FILTER -->
+                    <div class="glass" style="padding:16px 20px; margin-bottom:20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+                        <span style="font-weight:600; color:var(--text-secondary); font-size:0.9rem;">📅 Sana:</span>
+                        <input type="date" id="report-date-picker"
+                            style="background:rgba(255,255,255,0.06); border:1px solid var(--neon-cyan); color:white; padding:8px 14px; border-radius:10px; font-size:0.95rem; outline:none; cursor:pointer;"
+                            onchange="renderReports()">
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="report-quick-btn" onclick="setReportDate(0)">Bugun</button>
+                            <button class="report-quick-btn" onclick="setReportDate(-1)">Kecha</button>
+                            <button class="report-quick-btn" onclick="setReportDate(-7)">7 kun oldin</button>
+                            <button class="report-quick-btn" onclick="setReportDate(-30)">30 kun oldin</button>
+                        </div>
+                        <span id="report-selected-label" style="margin-left:auto; font-size:0.85rem; color:var(--neon-cyan); font-weight:600;"></span>
+                    </div>
+
                     <div class="stats-grid">
-                        <div class="stat-card glass"><h3>Bugungi Jami</h3><p class="value" id="report-today-total">0 so'm</p></div>
+                        <div class="stat-card glass"><h3>Tanlangan Kun Jami</h3><p class="value" id="report-today-total">0 so'm</p></div>
                         <div class="stat-card glass"><h3>Sotuvlar Soni</h3><p class="value" id="report-sale-count">0 ta</p></div>
                         <div class="stat-card glass"><h3>Sana</h3><p class="value" id="report-date" style="font-size: 1.2rem;"></p></div>
                     </div>
 
                     <div class="glass data-table-container">
-                        <h3>Bugungi Tranzaksiyalar</h3>
+                        <h3 id="report-table-title">Bugungi Tranzaksiyalar</h3>
                         <table class="data-table" style="margin-top: 15px;">
                             <thead>
                                 <tr>
@@ -1499,27 +1535,81 @@
             }
         }
 
+        function getReportDateStr() {
+            const picker = document.getElementById('report-date-picker');
+            if (!picker) return new Date().toLocaleDateString();
+            if (!picker.value) {
+                // Default to today
+                const now = new Date();
+                picker.value = now.toISOString().split('T')[0];
+            }
+            // Convert YYYY-MM-DD to locale string matching stored sale dates
+            const [y, m, d] = picker.value.split('-');
+            return new Date(y, m - 1, d).toLocaleDateString();
+        }
+
+        function setReportDate(offsetDays) {
+            const d = new Date();
+            d.setDate(d.getDate() + offsetDays);
+            const picker = document.getElementById('report-date-picker');
+            if (picker) {
+                picker.value = d.toISOString().split('T')[0];
+            }
+            renderReports();
+        }
+
         function renderReports() {
-            const now = new Date();
-            const todayStr = now.toLocaleDateString();
-            document.getElementById('report-date').textContent = todayStr;
-            
-            const todaySales = state.sales.filter(s => s.date.includes(todayStr) && !s.archived);
-            const total = todaySales.reduce((acc, s) => acc + s.total, 0);
+            // Init date picker to today if empty
+            const picker = document.getElementById('report-date-picker');
+            if (picker && !picker.value) {
+                picker.value = new Date().toISOString().split('T')[0];
+            }
+
+            const selectedStr = getReportDateStr();
+            document.getElementById('report-date').textContent = selectedStr;
+
+            // Label
+            const labelEl = document.getElementById('report-selected-label');
+            const today = new Date().toLocaleDateString();
+            const yesterday = new Date(Date.now() - 86400000).toLocaleDateString();
+            if (selectedStr === today) {
+                if (labelEl) labelEl.textContent = '✅ Bugun';
+                const titleEl = document.getElementById('report-table-title');
+                if (titleEl) titleEl.textContent = 'Bugungi Tranzaksiyalar';
+            } else if (selectedStr === yesterday) {
+                if (labelEl) labelEl.textContent = '📅 Kecha';
+                const titleEl = document.getElementById('report-table-title');
+                if (titleEl) titleEl.textContent = 'Kechagi Tranzaksiyalar';
+            } else {
+                if (labelEl) labelEl.textContent = `📆 ${selectedStr}`;
+                const titleEl = document.getElementById('report-table-title');
+                if (titleEl) titleEl.textContent = `${selectedStr} — Tranzaksiyalar`;
+            }
+
+            const daySales = state.sales.filter(s => s.date.includes(selectedStr));
+            const total = daySales.reduce((acc, s) => acc + s.total, 0);
             
             document.getElementById('report-today-total').textContent = `${total.toLocaleString()} so'm`;
-            document.getElementById('report-sale-count').textContent = `${todaySales.length} ta`;
+            document.getElementById('report-sale-count').textContent = `${daySales.length} ta`;
             
             const tbody = document.getElementById('report-table-body');
             tbody.innerHTML = '';
-            todaySales.forEach(s => {
+
+            if (daySales.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-secondary); padding:30px;">Bu kunda hech qanday sotuv topilmadi.</td></tr>`;
+                return;
+            }
+
+            daySales.forEach(s => {
                 const tr = document.createElement('tr');
                 let itemsHtml = (s.items || []).map(item => `
                     <div style="font-size:0.8rem; border-bottom:1px solid rgba(255,255,255,0.05); padding:2px 0">
                         ${item.name} (${item.length}m x ${item.count} = ${item.qty}m) - ${item.price.toLocaleString()} so'm
                     </div>
                 `).join('');
-                
+                const statusLabel = s.archived
+                    ? `<span class="ai-mark" style="background:rgba(255,200,0,0.1);color:#f9d423">Arxiv</span>`
+                    : `<span class="ai-mark" style="background:rgba(0,242,255,0.1);color:var(--neon-cyan)">Faol</span>`;
                 tr.innerHTML = `
                     <td>#${s.id.toString().slice(-6)}</td>
                     <td>${s.date}</td>
@@ -1527,19 +1617,18 @@
                         <div style="font-weight:bold">${s.total.toLocaleString()} so'm</div>
                         <div style="margin-top:5px; color:var(--text-secondary)">${itemsHtml}</div>
                     </td>
-                    <td><span class="ai-mark" style="background:rgba(0,242,255,0.1);color:var(--neon-cyan)">Faol</span></td>
+                    <td>${statusLabel}</td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
         function exportToExcel() {
-            const now = new Date();
-            const todayStr = now.toLocaleDateString();
-            const todaySales = state.sales.filter(s => s.date.includes(todayStr) && !s.archived);
+            const selectedStr = getReportDateStr();
+            const todaySales = state.sales.filter(s => s.date.includes(selectedStr));
             
             if (todaySales.length === 0) {
-                alert("Bugun hali sotuvlar amalga oshirilmadi!");
+                alert(`${selectedStr} kuni uchun sotuvlar topilmadi!`);
                 return;
             }
 
